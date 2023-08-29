@@ -1,0 +1,212 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      #layer {
+        display: flex;
+        width: 100%;
+        height: 400px;
+        background-color: #000;
+      }
+      #aside {
+        width: 200px;
+        background-color: #111;
+      }
+      #outer {
+        flex: 1;
+
+        background-color: green;
+      }
+
+      #canvas {
+        /* background-color: red; */
+      }
+    </style>
+  </head>
+  <body>
+    <select id="size">
+      <option>512 x 512</option>
+      <option>768 x 512</option>
+      <option>512 x 768</option>
+      <option>1024 x 1024</option>
+      <option>2048 x 2048</option>
+    </select>
+    <div id="layer">
+      <div id="aside"></div>
+      <div id="outer">
+        <div id="canvas"></div>
+      </div>
+    </div>
+    <img id="null" />
+    <button id="btn">click</button>
+    <script src="https://unpkg.com/konva@9.2.0/konva.min.js"></script>
+    <script>
+      let test = "";
+      const $selectSize = document.querySelector("#size");
+      const $outer = document.querySelector("#outer");
+      const $inner = document.querySelector("#inner");
+      const $scroll = document.querySelector("#scroll");
+      const $canvas = document.querySelector("#canvas");
+      const btnClick = document.getElementById("btn");
+      btnClick.addEventListener("click", function () {
+        const imgE = document.getElementById("null");
+        imgE.src = test;
+      });
+
+      const imageSrc = "./ss.jpg";
+
+      const stage = new Konva.Stage({
+        container: "canvas",
+        width: 512,
+        height: 512,
+      });
+      const imageLayer = new Konva.Layer();
+      const drawLayer = new Konva.Layer();
+      stage.add(imageLayer);
+      let scale = 1;
+      let fakeScale = 1;
+      let fakeX = 0;
+      let fakeY = 0;
+      const importImage = (src) => {
+        const imageElement = new Image();
+
+        imageElement.onload = () => {
+          const { width: stageW, height: stageH } = stage.size();
+          const { width: imageW, height: imageH } = imageElement;
+
+          const stageRatio = stageW / stageH;
+          const imageRatio = imageW / imageH;
+
+          let width = stageW;
+          let height = stageH;
+          let x = 0;
+          let y = 0;
+
+          if (stageRatio < imageRatio) {
+            // 이미지 높이를 스테이지 높이에 맞추고, 비율에 따라 늘어난 이미지 너비를 크롭
+            width = stageH * imageRatio;
+            x = (stageW - width) / 2;
+          } else if (stageRatio > imageRatio) {
+            // 이미지 너비를 스테이지 너비에 맞추고, 비율에 따라 늘어난 높이를 크롭
+            height = stageW / imageRatio;
+            y = (stageH - height) / 2;
+          }
+
+          scale = stageRatio < imageRatio ? stageH / imageH : stageW / imageW;
+
+          imageLayer.destroyChildren();
+          imageLayer.add(
+            new Konva.Image({ image: imageElement, width, height, x, y })
+          );
+          drawLayer.hide();
+          const canvas = stage.toCanvas();
+          const context = canvas.getContext("2d");
+
+          const image = new Image();
+          let fakeScale = null;
+          image.onload = function () {
+            const containerWidth = 600;
+            const containerHeight = 400;
+            const imageWidth = image.width;
+            const imageHeight = image.height;
+
+            const widthRatio = containerWidth / imageWidth;
+            const heightRatio = containerHeight / imageHeight;
+            const scale = Math.min(widthRatio, heightRatio);
+            fakeScale = scale;
+            const drawWidth = imageWidth * scale;
+            const drawHeight = imageHeight * scale;
+            const xOffset = (containerWidth - drawWidth) / 2;
+            const yOffset = (containerHeight - drawHeight) / 2;
+            fakeX = xOffset;
+            fakeY = yOffset;
+            canvas.width = containerWidth;
+            canvas.height = containerHeight;
+
+            context.drawImage(image, xOffset, yOffset, drawWidth, drawHeight);
+
+            const newImage = new Image();
+            newImage.onload = () => {
+              imageLayer.destroyChildren();
+              imageLayer.add(
+                new Konva.Image({
+                  image: newImage,
+                })
+              );
+            };
+            newImage.src = canvas.toDataURL();
+          };
+          image.src = stage.toDataURL(); // 이미지 경로를 적절하게 변경하세요.
+
+          // drawLayer.position({ x: fakeX, y: fakeY });
+          // drawLayer.scale({ x: fakeScale, y: fakeScale });
+
+          drawLayer.moveToTop();
+          drawLayer.show();
+        };
+
+        imageElement.src = src;
+      };
+      const setDrawLayer = () => {
+        let lastLine;
+        let isPaint = false;
+
+        stage.on("mousedown", () => {
+          isPaint = true;
+
+          const x = (stage.getPointerPosition().x - drawLayer.x()) / fakeScale;
+          const y = (stage.getPointerPosition().y - drawLayer.y()) / fakeScale;
+
+          lastLine = new Konva.Line({
+            stroke: "blue",
+            strokeWidth: 5 / fakeScale,
+            globalCompositeOperation: "source-over",
+            lineCap: "round",
+            lineJoin: "round",
+            points: [x, y, x, y],
+          });
+
+          drawLayer.add(lastLine);
+        });
+
+        stage.on("mousemove", ({ evt }) => {
+          if (!isPaint) return;
+
+          evt.preventDefault();
+
+          const x = (stage.getPointerPosition().x - drawLayer.x()) / fakeScale;
+          const y = (stage.getPointerPosition().y - drawLayer.y()) / fakeScale;
+
+          lastLine.points(lastLine.points().concat([x, y]));
+        });
+
+        stage.on("mouseup", () => {
+          isPaint = false;
+        });
+
+        stage.add(drawLayer);
+      };
+
+      const changeSize = () => {
+        $selectSize.addEventListener("change", ({ target: { value } }) => {
+          const [width, height] = value.split(" x ").map((n) => parseInt(n));
+
+          stage.width(width);
+          stage.height(height);
+
+          importImage(imageSrc);
+        });
+
+        $selectSize.dispatchEvent(new Event("change"));
+      };
+
+      const initial = () => {
+        setDrawLayer();
+        changeSize();
+      };
+
+      initial();
+    </script>
+  </body>
+</html>
